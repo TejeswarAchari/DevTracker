@@ -45,7 +45,8 @@ const AuthScreen = ({ onLogin }) => {
       return;
     }
     
-    const endpoint = isRegister ? '/register' : '/login';
+    const endpoint = isRegister ? '/api/register' : '/api/login';
+
     
     try {
       const res = await api.post(endpoint, formData);
