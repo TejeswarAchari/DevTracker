@@ -42,8 +42,9 @@ export const calculateStats = (
 
   // ---- CURRENT STREAK ----
   if (yearDays.length > 0) {
-    // Start from LAST activity day (not today / Dec 31)
-    let streakDate = new Date(yearDays[yearDays.length - 1].date);
+    let streakDate = new Date(
+      yearDays[yearDays.length - 1].date
+    );
 
     while (true) {
       const dStr = format(streakDate, "yyyy-MM-dd");
@@ -76,10 +77,19 @@ export const calculateStats = (
   });
 
   /* ==============================
-     MONTHLY STATS (YEAR SAFE)
+     MONTHLY STATS (FIXED)
   ============================== */
-  const currentMonthIndex = new Date().getMonth();
-  const monthBaseDate = new Date(selectedYear, currentMonthIndex, 1);
+  const lastActiveDate =
+    yearDays.length > 0
+      ? new Date(yearDays[yearDays.length - 1].date)
+      : new Date(selectedYear, new Date().getMonth(), 1);
+
+  const monthBaseDate = new Date(
+    lastActiveDate.getFullYear(),
+    lastActiveDate.getMonth(),
+    1
+  );
+
   const monthStr = format(monthBaseDate, "yyyy-MM");
 
   const monthDays = yearDays.filter(d =>
