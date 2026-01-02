@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Plus, Calendar } from "lucide-react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import LogItem from "./LogItem";
 import api from "../utils/api";
 import clsx from "clsx";
@@ -13,16 +14,42 @@ const LogModal = ({ isOpen, onClose, date, refreshData, existingData }) => {
     category: "Coding",
   });
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  // Virtual scrolling for logs
+  const parentRef = useRef(null);
+  const logs = existingData?.logs || [];
+  
+  const virtualizer = useVirtualizer({
+    count: logs.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 80,
+    overscan: 5,
+  });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError("");
+    
+    // Client-side validation
+    if (!formData.title.trim()) {
+      setError("Title is required");
+      return;
+    }
+    
+    if (formData.title.length > 200) {
+      setError("Title must be less than 200 characters");
+      return;
+    }
+    
     setLoading(true);
     try {
-      await api.post("/log", { ...formData, date });
+      await api.post("/log", { ...formData, date, description: "" });
       setFormData({ title: "", category: "Coding" });
       await refreshData();
     } catch (err) {
-      console.error(err);
+      const errorMsg = err.response?.data?.msg || err.response?.data?.errors?.[0]?.msg || "Failed to create log. Please try again.";
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -33,6 +60,8 @@ const LogModal = ({ isOpen, onClose, date, refreshData, existingData }) => {
       await api.delete(`/log/${date}/${logId}`);
       await refreshData();
     } catch (err) {
+      const errorMsg = err.response?.data?.msg || "Failed to delete log. Please try again.";
+      setError(errorMsg);
       console.error(err);
     }
   };
@@ -82,19 +111,52 @@ const LogModal = ({ isOpen, onClose, date, refreshData, existingData }) => {
           </div>
 
           <div className="p-6">
+            {/* Error Message */}
+            {error && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-bold text-center"
+              >
+                {error}
+              </motion.div>
+            )}
+            
             {/* Log List */}
-            <div className="mb-8 space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-              <AnimatePresence mode="popLayout">
-                {existingData?.logs.map((log) => (
-                  <LogItem
-                    key={log._id}
-                    log={log}
-                    onDelete={handleDelete}
-                  />
-                ))}
-              </AnimatePresence>
-
-              {(!existingData || existingData.logs.length === 0) && (
+            <div 
+              ref={parentRef}
+              className="mb-8 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar"
+            >
+              {logs.length > 0 ? (
+                <div
+                  style={{
+                    height: `${virtualizer.getTotalSize()}px`,
+                    width: '100%',
+                    position: 'relative',
+                  }}
+                >
+                  {virtualizer.getVirtualItems().map((virtualItem) => {
+                    const log = logs[virtualItem.index];
+                    return (
+                      <div
+                        key={log._id}
+                        style={{
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          width: '100%',
+                          transform: `translateY(${virtualItem.start}px)`,
+                        }}
+                      >
+                        <LogItem
+                          log={log}
+                          onDelete={handleDelete}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
                 <div className="text-center py-10 border-2 border-dashed border-white/5 rounded-2xl">
                   <p className="text-zinc-500 text-sm">
                     No activity recorded yet.

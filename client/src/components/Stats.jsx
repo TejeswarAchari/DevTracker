@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import confetti from "canvas-confetti";
+import { Shield } from "lucide-react";
 import {
   getCurrentMilestone,
   getNextMilestone,
@@ -32,6 +33,7 @@ const StatCard = ({ label, value, delay, suffix = "", children }) => (
 
 const Stats = ({ stats, year }) => {
   const prevMilestoneRef = useRef(null);
+  const celebratedMilestonesRef = useRef(new Set());
 
   const currentMilestone =
     stats.currentStreak > 0
@@ -43,11 +45,12 @@ const Stats = ({ stats, year }) => {
       ? getNextMilestone(stats.currentStreak)
       : null;
 
-  /* 🎉 CONFETTI ON MILESTONE UNLOCK */
+  /* 🎉 CONFETTI ON MILESTONE UNLOCK (FIXED: No spam on year change) */
   useEffect(() => {
     if (
       currentMilestone &&
-      prevMilestoneRef.current !== currentMilestone.title
+      prevMilestoneRef.current !== currentMilestone.title &&
+      !celebratedMilestonesRef.current.has(currentMilestone.title)
     ) {
       confetti({
         particleCount: 120,
@@ -56,6 +59,8 @@ const Stats = ({ stats, year }) => {
         colors: ["#22c55e", "#06b6d4", "#a855f7"],
       });
 
+      // Mark this milestone as celebrated
+      celebratedMilestonesRef.current.add(currentMilestone.title);
       prevMilestoneRef.current = currentMilestone.title;
     }
   }, [currentMilestone]);
@@ -105,6 +110,19 @@ const Stats = ({ stats, year }) => {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* 🛡️ FREEZE INDICATOR */}
+        {stats.freezesUsedInCurrentStreak > 0 && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="mt-2 flex items-center gap-1.5 text-[10px] text-cyan-400 font-semibold
+                       bg-cyan-500/10 border border-cyan-500/20 rounded-lg px-2 py-1"
+          >
+            <Shield size={12} />
+            {stats.freezesUsedInCurrentStreak} freeze{stats.freezesUsedInCurrentStreak > 1 ? 's' : ''} protecting this streak
+          </motion.div>
+        )}
 
         {/* 🎯 NEXT MILESTONE */}
         {nextMilestone && (
