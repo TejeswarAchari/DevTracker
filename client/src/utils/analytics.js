@@ -4,62 +4,63 @@ import {
   endOfMonth,
   eachDayOfInterval,
   format,
-  isToday,
 } from "date-fns";
 
-export const calculateStats = (data) => {
-  // 1. Sort days by date (ascending)
+export const calculateStats = (
+  data,
+  selectedYear = new Date().getFullYear()
+) => {
+  /* ==============================
+     SORT & FILTER
+  ============================== */
   const sortedDays = [...data].sort(
     (a, b) => new Date(a.date) - new Date(b.date)
   );
 
-  const dateSet = new Set(sortedDays.map((d) => d.date));
+  const yearStr = String(selectedYear);
+  const yearDays = sortedDays.filter(d =>
+    d.date.startsWith(yearStr)
+  );
+
+  const yearDateSet = new Set(yearDays.map(d => d.date));
 
   /* ==============================
-     TOTAL STATS (LOG-BASED)
+     TOTAL STATS (GLOBAL)
   ============================== */
   const totalLogs = sortedDays.reduce(
-    (acc, curr) => acc + (curr.logs?.length || 0),
+    (acc, d) => acc + (d.logs?.length || 0),
     0
   );
 
   const totalActiveDays = sortedDays.length;
 
   /* ==============================
-     STREAK CALCULATION
+     STREAKS (YEAR SCOPED)
   ============================== */
   let currentStreak = 0;
   let maxStreak = 0;
 
-  const today = new Date();
-  const todayStr = format(today, "yyyy-MM-dd");
+  // ---- CURRENT STREAK ----
+  if (yearDays.length > 0) {
+    // Start from LAST activity day (not today / Dec 31)
+    let streakDate = new Date(yearDays[yearDays.length - 1].date);
 
-  // If today has no log, allow yesterday to keep streak alive
-  let streakDate =
-    isToday(today) && !dateSet.has(todayStr)
-      ? subDays(today, 1)
-      : today;
-
-  // Calculate current streak (walk backwards)
-  while (true) {
-    const dStr = format(streakDate, "yyyy-MM-dd");
-    if (dateSet.has(dStr)) {
-      currentStreak++;
-      streakDate = subDays(streakDate, 1);
-    } else {
-      if (dStr === todayStr) {
+    while (true) {
+      const dStr = format(streakDate, "yyyy-MM-dd");
+      if (yearDateSet.has(dStr)) {
+        currentStreak++;
         streakDate = subDays(streakDate, 1);
-        continue;
+      } else {
+        break;
       }
-      break;
     }
   }
 
-  // Calculate max streak from history
+  // ---- LONGEST STREAK ----
   let tempStreak = 0;
   let prevDate = null;
 
-  sortedDays.forEach((day) => {
+  yearDays.forEach(day => {
     const currentDate = new Date(day.date);
 
     if (prevDate) {
@@ -74,36 +75,34 @@ export const calculateStats = (data) => {
     prevDate = currentDate;
   });
 
-  // Safety fallback
-  if (currentStreak > maxStreak) maxStreak = currentStreak;
-
   /* ==============================
-     MONTHLY STATS
+     MONTHLY STATS (YEAR SAFE)
   ============================== */
-  const now = new Date();
-  const currentMonthStr = format(now, "yyyy-MM");
+  const currentMonthIndex = new Date().getMonth();
+  const monthBaseDate = new Date(selectedYear, currentMonthIndex, 1);
+  const monthStr = format(monthBaseDate, "yyyy-MM");
 
-  const monthDays = sortedDays.filter((d) =>
-    d.date.startsWith(currentMonthStr)
+  const monthDays = yearDays.filter(d =>
+    d.date.startsWith(monthStr)
   );
 
   const monthlyTotalLogs = monthDays.reduce(
-    (acc, curr) => acc + (curr.logs?.length || 0),
+    (acc, d) => acc + (d.logs?.length || 0),
     0
   );
 
   const monthlyActiveDays = monthDays.length;
 
   const daysInMonth = eachDayOfInterval({
-    start: startOfMonth(now),
-    end: endOfMonth(now),
+    start: startOfMonth(monthBaseDate),
+    end: endOfMonth(monthBaseDate),
   }).length;
 
   const monthProgress =
     Math.round((monthlyActiveDays / daysInMonth) * 100) || 0;
 
   /* ==============================
-     FINAL RETURN
+     RETURN
   ============================== */
   return {
     totalLogs,
@@ -114,7 +113,7 @@ export const calculateStats = (data) => {
       totalLogs: monthlyTotalLogs,
       activeDays: monthlyActiveDays,
       progress: monthProgress,
-      name: format(now, "MMMM"),
+      name: format(monthBaseDate, "MMMM"),
     },
   };
 };

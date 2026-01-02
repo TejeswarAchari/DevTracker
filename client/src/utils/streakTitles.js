@@ -1,0 +1,25 @@
+export const getStreakTitle = (streak) => {
+  if (streak >= 1000) return "Immortal";
+  if (streak >= 730) return "Myth";
+  if (streak >= 365) return "Legendary Architect";
+  if (streak >= 300) return "Timeless";
+  if (streak >= 250) return "System Thinker";
+  if (streak >= 200) return "Elite Operator";
+  if (streak >= 180) return "Unbreakable";
+  if (streak >= 150) return "Machine Mind";
+  if (streak >= 120) return "Monk Mode";
+  if (streak >= 100) return "Insane Sage";
+  if (streak >= 90) return "Beast Mode";
+  if (streak >= 75) return "Deep Focus";
+  if (streak >= 60) return "Iron Will";
+  if (streak >= 45) return "Relentless";
+  if (streak >= 30) return "Disciplined";
+  if (streak >= 21) return "Habit Builder";
+  if (streak >= 14) return "Locked In";
+  if (streak >= 10) return "Unstoppable";
+  if (streak >= 7) return "Consistent";
+  if (streak >= 5) return "Focused";
+  if (streak >= 3) return "Sparked";
+  if (streak >= 1) return "First Step";
+  return "—";
+};

@@ -66,7 +66,7 @@ function App() {
     }
 
     // Global analytics (streaks + monthly)
-    const analytics = calculateStats(data);
+    const analytics = calculateStats(data,year);
 
     // Year-specific stats
     const yearStr = String(year);
@@ -164,7 +164,7 @@ function App() {
         <Stats stats={dashboardStats} year={year} />
 
         {/* MONTHLY OVERVIEW */}
-        <MonthlyOverview stats={dashboardStats} />
+        <MonthlyOverview stats={dashboardStats} year={year} />
 
         {/* HEATMAP */}
         <div className="space-y-4">
