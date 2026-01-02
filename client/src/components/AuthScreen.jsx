@@ -45,7 +45,8 @@ const AuthScreen = ({ onLogin }) => {
       return;
     }
     
-    const endpoint = isRegister ? '/api/register' : '/api/login';
+    const endpoint = isRegister ? '/register' : '/login';
+
 
     
     try {
