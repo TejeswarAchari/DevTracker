@@ -95,3 +95,16 @@ body {
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #58a6ff; /* GitHub Blue hover */
 }
+
+/* Mobile Optimizations */
+@media (max-width: 768px) {
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+}

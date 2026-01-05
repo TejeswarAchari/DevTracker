@@ -43,19 +43,27 @@ export const ToastProvider = ({ children }) => {
 
 const Toast = ({ message, type, onClose }) => {
   const icons = {
-    success: <CheckCircle className="text-green-400" size={20} />,
-    error: <AlertTriangle className="text-red-400" size={20} />,
-    warning: <AlertTriangle className="text-amber-400" size={20} />,
-    info: <Info className="text-cyan-400" size={20} />,
-    freeze: <Snowflake className="text-cyan-400" size={20} />
+    success: <CheckCircle size={20} />,
+    error: <AlertTriangle size={20} />,
+    warning: <AlertTriangle size={20} />,
+    info: <Info size={20} />,
+    freeze: <Snowflake size={20} />
   };
 
   const colors = {
-    success: 'border-green-500/30 bg-green-500/10',
-    error: 'border-red-500/30 bg-red-500/10',
-    warning: 'border-amber-500/30 bg-amber-500/10',
-    info: 'border-cyan-500/30 bg-cyan-500/10',
-    freeze: 'border-cyan-500/30 bg-cyan-500/10'
+    success: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+    error: 'border-rose-200 bg-rose-50 text-rose-800',
+    warning: 'border-amber-200 bg-amber-50 text-amber-800',
+    info: 'border-cyan-200 bg-cyan-50 text-cyan-800',
+    freeze: 'border-cyan-200 bg-cyan-50 text-cyan-800'
+  };
+
+  const iconColors = {
+    success: 'text-emerald-600',
+    error: 'text-rose-600',
+    warning: 'text-amber-600',
+    info: 'text-cyan-600',
+    freeze: 'text-cyan-600'
   };
 
   return (
@@ -63,13 +71,13 @@ const Toast = ({ message, type, onClose }) => {
       initial={{ opacity: 0, x: 100 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 100 }}
-      className={`flex items-center gap-3 p-4 rounded-lg border backdrop-blur-sm ${colors[type]} min-w-[300px] max-w-md`}
+      className={`flex items-center gap-3 p-4 rounded-xl border shadow-lg ${colors[type]} min-w-[300px] max-w-md`}
     >
-      {icons[type]}
-      <p className="text-sm text-white flex-1">{message}</p>
+      <span className={iconColors[type]}>{icons[type]}</span>
+      <p className="text-sm font-medium flex-1">{message}</p>
       <button
         onClick={onClose}
-        className="text-zinc-400 hover:text-white transition-colors"
+        className="text-slate-400 hover:text-slate-600 transition-colors"
       >
         <X size={16} />
       </button>

@@ -6,6 +6,8 @@ const { body, validationResult } = require('express-validator');
 const crypto = require('crypto');
 const User = require('../models/User');
 const DayRecord = require('../models/DayRecord');
+const Resource = require('../models/Resource');
+const DiaryEntry = require('../models/DiaryEntry');
 const auth = require('../middleware/auth');
 
 // ==============================
@@ -513,6 +515,556 @@ router.get('/freeze/history', auth, async (req, res) => {
     });
   } catch (err) {
     console.error('Freeze history error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// ==============================
+// RESOURCE LIBRARY ROUTES 📚
+// ==============================
+
+// Create resource
+router.post('/resources', auth, [
+  body('title').trim().notEmpty().withMessage('Title required').isLength({ max: 200 }),
+  body('resourceType').isIn(['article', 'video', 'tutorial', 'documentation', 'tool', 'code', 'book', 'course', 'podcast', 'other']),
+  body('description').trim().isLength({ max: 1000 }).optional(),
+  body('url').trim().isLength({ max: 500 }).optional(),
+  body('category').trim().isLength({ max: 100 }).optional(),
+  body('subcategory').trim().isLength({ max: 100 }).optional(),
+  body('priority').isIn(['high', 'medium', 'low']).optional(),
+  body('status').isIn(['unread', 'reading', 'completed', 'reviewed', 'archived']).optional(),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ msg: errors.array()[0].msg });
+  }
+
+  try {
+    const resource = new Resource({
+      userId: req.user.id,
+      title: req.body.title,
+      description: req.body.description || '',
+      resourceType: req.body.resourceType,
+      url: req.body.url || '',
+      category: req.body.category || '',
+      subcategory: req.body.subcategory || '',
+      tags: req.body.tags || [],
+      priority: req.body.priority || 'medium',
+      status: req.body.status || 'unread',
+      sourceDate: req.body.sourceDate || null,
+    });
+
+    await resource.save();
+    res.status(201).json(resource);
+  } catch (err) {
+    console.error('Create resource error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// Get all resources (with pagination and filters)
+router.get('/resources', auth, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = 50;
+    const skip = (page - 1) * limit;
+
+    const filters = { userId: req.user.id };
+    
+    if (req.query.status) {
+      filters.status = req.query.status;
+    } else {
+      filters.status = { $ne: 'archived' };
+    }
+    if (req.query.resourceType) filters.resourceType = req.query.resourceType;
+    if (req.query.priority) filters.priority = req.query.priority;
+    if (req.query.tags) {
+      filters.tags = { $in: Array.isArray(req.query.tags) ? req.query.tags : [req.query.tags] };
+    }
+
+    const sortBy = req.query.sortBy || '-isPinned -createdAt';
+    const resources = await Resource.find(filters)
+      .sort(sortBy)
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    const total = await Resource.countDocuments(filters);
+
+    res.json({
+      data: resources,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    });
+  } catch (err) {
+    console.error('Get resources error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// Search resources (MUST be before /:id route)
+router.get('/resources/search/:query', auth, async (req, res) => {
+  try {
+    const searchQuery = req.params.query.trim();
+    const page = parseInt(req.query.page) || 1;
+    const limit = 50;
+    const skip = (page - 1) * limit;
+
+    const baseFilter = {
+      userId: req.user.id,
+      status: { $ne: 'archived' },
+      $or: [
+        { title: { $regex: searchQuery, $options: 'i' } },
+        { description: { $regex: searchQuery, $options: 'i' } },
+        { tags: { $regex: searchQuery, $options: 'i' } }
+      ]
+    };
+
+    const resources = await Resource.find(baseFilter)
+    .sort('-isPinned -createdAt')
+    .skip(skip)
+    .limit(limit)
+    .lean();
+
+    const total = await Resource.countDocuments(baseFilter);
+
+    res.json({
+      data: resources,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    });
+  } catch (err) {
+    console.error('Search resources error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// Get resource stats (MUST be before /:id route)
+router.get('/resources/stats/all', auth, async (req, res) => {
+  try {
+    const stats = await Resource.aggregate([
+      { $match: { userId: req.user.id } },
+      {
+        $group: {
+          _id: null,
+          totalResources: { $sum: 1 },
+          unreadCount: {
+            $sum: { $cond: [{ $eq: ['$status', 'unread'] }, 1, 0] }
+          },
+          readingCount: {
+            $sum: { $cond: [{ $eq: ['$status', 'reading'] }, 1, 0] }
+          },
+          completedCount: {
+            $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] }
+          },
+          reviewedCount: {
+            $sum: { $cond: [{ $eq: ['$status', 'reviewed'] }, 1, 0] }
+          },
+          archivedCount: {
+            $sum: { $cond: [{ $eq: ['$status', 'archived'] }, 1, 0] }
+          },
+          avgRating: { $avg: '$rating' }
+        }
+      },
+      {
+        $facet: {
+          byType: [
+            { $match: { userId: req.user.id } },
+            { $group: { _id: '$resourceType', count: { $sum: 1 } } }
+          ],
+          byPriority: [
+            { $match: { userId: req.user.id } },
+            { $group: { _id: '$priority', count: { $sum: 1 } } }
+          ],
+          stats: [
+            { $limit: 1 }
+          ]
+        }
+      }
+    ]);
+
+    const overallStats = stats[0]?.stats[0] || {};
+    const byType = stats[0]?.byType || [];
+    const byPriority = stats[0]?.byPriority || [];
+
+    res.json({
+      ...overallStats,
+      byType: Object.fromEntries(byType.map(t => [t._id, t.count])),
+      byPriority: Object.fromEntries(byPriority.map(p => [p._id, p.count]))
+    });
+  } catch (err) {
+    console.error('Get stats error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// Get single resource
+router.get('/resources/:id', auth, async (req, res) => {
+  try {
+    const resource = await Resource.findOne({
+      _id: req.params.id,
+      userId: req.user.id
+    });
+
+    if (!resource) {
+      return res.status(404).json({ msg: 'Resource not found' });
+    }
+
+    res.json(resource);
+  } catch (err) {
+    console.error('Get resource error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// Update resource
+router.put('/resources/:id', auth, [
+  body('title').trim().isLength({ max: 200 }).optional(),
+  body('resourceType').isIn(['article', 'video', 'tutorial', 'documentation', 'tool', 'code', 'book', 'course', 'podcast', 'other']).optional(),
+  body('priority').isIn(['high', 'medium', 'low']).optional(),
+  body('status').isIn(['unread', 'reading', 'completed', 'reviewed', 'archived']).optional(),
+  body('rating').isInt({ min: 0, max: 5 }).optional(),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ msg: errors.array()[0].msg });
+  }
+
+  try {
+    let resource = await Resource.findOne({
+      _id: req.params.id,
+      userId: req.user.id
+    });
+
+    if (!resource) {
+      return res.status(404).json({ msg: 'Resource not found' });
+    }
+
+    const updateFields = ['title', 'description', 'resourceType', 'url', 'category', 'subcategory', 'tags', 'priority', 'status', 'rating', 'notes', 'sourceDate'];
+    updateFields.forEach(field => {
+      if (req.body[field] !== undefined) {
+        resource[field] = req.body[field];
+      }
+    });
+
+    // Set completion date when status changes to 'completed'
+    if (req.body.status === 'completed' && resource.status !== 'completed') {
+      resource.completionDate = new Date();
+    }
+
+    await resource.save();
+    res.json(resource);
+  } catch (err) {
+    console.error('Update resource error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// Delete (hard delete)
+router.delete('/resources/:id', auth, async (req, res) => {
+  try {
+    const deleted = await Resource.findOneAndDelete({
+      _id: req.params.id,
+      userId: req.user.id
+    });
+
+    if (!deleted) {
+      return res.status(404).json({ msg: 'Resource not found' });
+    }
+
+    res.json({ msg: 'Resource deleted' });
+  } catch (err) {
+    console.error('Delete resource error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// Mark as complete
+router.post('/resources/:id/complete', auth, async (req, res) => {
+  try {
+    const resource = await Resource.findOne({
+      _id: req.params.id,
+      userId: req.user.id
+    });
+
+    if (!resource) {
+      return res.status(404).json({ msg: 'Resource not found' });
+    }
+
+    resource.status = 'completed';
+    resource.completionDate = new Date();
+    await resource.save();
+
+    res.json(resource);
+  } catch (err) {
+    console.error('Complete resource error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// Rate resource
+router.post('/resources/:id/rate', auth, [
+  body('rating').isInt({ min: 1, max: 5 }).withMessage('Rating must be 1-5')
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ msg: errors.array()[0].msg });
+  }
+
+  try {
+    const resource = await Resource.findOne({
+      _id: req.params.id,
+      userId: req.user.id
+    });
+
+    if (!resource) {
+      return res.status(404).json({ msg: 'Resource not found' });
+    }
+
+    resource.rating = req.body.rating;
+    await resource.save();
+
+    res.json(resource);
+  } catch (err) {
+    console.error('Rate resource error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// Toggle pin
+router.post('/resources/:id/toggle-pin', auth, async (req, res) => {
+  try {
+    const resource = await Resource.findOne({
+      _id: req.params.id,
+      userId: req.user.id
+    });
+
+    if (!resource) {
+      return res.status(404).json({ msg: 'Resource not found' });
+    }
+
+    resource.isPinned = !resource.isPinned;
+    await resource.save();
+
+    res.json({
+      _id: resource._id,
+      isPinned: resource.isPinned
+    });
+  } catch (err) {
+    console.error('Toggle pin error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// ==============================
+// DIARY ROUTES 📓
+// ==============================
+
+// Create/update diary entry
+router.post('/diary', auth, [
+  body('date').matches(/^\d{4}-\d{2}-\d{2}$/).withMessage('Invalid date format'),
+  body('content').trim().notEmpty().withMessage('Content required'),
+  body('mood').isIn(['very-happy', 'happy', 'neutral', 'sad', 'very-sad', 'excited', 'stressed', 'tired']).optional(),
+  body('moodIntensity').isInt({ min: 1, max: 10 }).optional(),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ msg: errors.array()[0].msg });
+  }
+
+  try {
+    const { date, content, mood, moodIntensity, people, gratitude, reflection } = req.body;
+
+    let entry = await DiaryEntry.findOne({
+      userId: req.user.id,
+      date
+    });
+
+    if (entry) {
+      Object.assign(entry, { content, mood, moodIntensity, people, gratitude, reflection });
+      await entry.save();
+    } else {
+      entry = new DiaryEntry({
+        userId: req.user.id,
+        date,
+        content,
+        mood: mood || 'neutral',
+        moodIntensity: moodIntensity || 5,
+        people: people || [],
+        gratitude: gratitude || '',
+        reflection: reflection || ''
+      });
+      await entry.save();
+    }
+
+    res.status(201).json(entry);
+  } catch (err) {
+    console.error('Create diary entry error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// Get diary entry for date
+router.get('/diary/date/:date', auth, async (req, res) => {
+  try {
+    const entry = await DiaryEntry.findOne({
+      userId: req.user.id,
+      date: req.params.date
+    });
+
+    if (!entry) {
+      return res.status(404).json({ msg: 'No entry for this date' });
+    }
+
+    res.json(entry);
+  } catch (err) {
+    console.error('Get diary entry error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// Get entries for year
+router.get('/diary/year/:year', auth, async (req, res) => {
+  try {
+    const year = parseInt(req.params.year);
+
+    const entries = await DiaryEntry.find({
+      userId: req.user.id,
+      date: { $regex: `^${year}-` }
+    })
+    .sort('-date')
+    .lean();
+
+    res.json(entries);
+  } catch (err) {
+    console.error('Get yearly entries error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// Get timeline view
+router.get('/diary/timeline', auth, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = 20;
+    const skip = (page - 1) * limit;
+
+    const entries = await DiaryEntry.find({ userId: req.user.id })
+      .sort('-date')
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    const total = await DiaryEntry.countDocuments({ userId: req.user.id });
+
+    res.json({
+      data: entries,
+      pagination: { page, limit, total, pages: Math.ceil(total / limit) }
+    });
+  } catch (err) {
+    console.error('Timeline error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// Get on-this-day entries
+router.get('/diary/on-this-day', auth, async (req, res) => {
+  try {
+    const today = new Date();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    const datePattern = `-${month}-${day}`;
+
+    const entries = await DiaryEntry.find({
+      userId: req.user.id,
+      date: { $regex: datePattern }
+    })
+    .sort('-date')
+    .lean();
+
+    res.json(entries);
+  } catch (err) {
+    console.error('On-this-day error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// Get diary stats
+router.get('/diary/stats/all', auth, async (req, res) => {
+  try {
+    const stats = await DiaryEntry.aggregate([
+      { $match: { userId: req.user.id } },
+      {
+        $group: {
+          _id: null,
+          totalEntries: { $sum: 1 },
+          avgMoodIntensity: { $avg: '$moodIntensity' }
+        }
+      },
+      {
+        $facet: {
+          byMood: [
+            { $match: { userId: req.user.id } },
+            { $group: { _id: '$mood', count: { $sum: 1 } } }
+          ],
+          stats: [{ $limit: 1 }]
+        }
+      }
+    ]);
+
+    const overallStats = stats[0]?.stats[0] || {};
+    const byMood = stats[0]?.byMood || [];
+
+    res.json({
+      ...overallStats,
+      byMood: Object.fromEntries(byMood.map(m => [m._id, m.count]))
+    });
+  } catch (err) {
+    console.error('Get diary stats error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// Update diary entry
+router.put('/diary/:id', auth, async (req, res) => {
+  try {
+    let entry = await DiaryEntry.findOne({
+      _id: req.params.id,
+      userId: req.user.id
+    });
+
+    if (!entry) {
+      return res.status(404).json({ msg: 'Entry not found' });
+    }
+
+    Object.assign(entry, req.body);
+    await entry.save();
+    res.json(entry);
+  } catch (err) {
+    console.error('Update diary error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// Delete diary entry
+router.delete('/diary/:id', auth, async (req, res) => {
+  try {
+    await DiaryEntry.findOneAndDelete({
+      _id: req.params.id,
+      userId: req.user.id
+    });
+
+    res.json({ msg: 'Entry deleted' });
+  } catch (err) {
+    console.error('Delete diary error:', err);
     res.status(500).json({ msg: 'Server error' });
   }
 });

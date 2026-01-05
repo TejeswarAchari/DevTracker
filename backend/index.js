@@ -110,6 +110,7 @@ app.get('/health', (req, res) => {
 
 // Routes
 app.use('/api', require('./routes/api'));
+app.use('/api', require('./routes/api-features'));
 
 // ==============================
 // ERROR HANDLING MIDDLEWARE

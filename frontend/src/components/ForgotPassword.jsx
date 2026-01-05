@@ -17,10 +17,7 @@ const ForgotPassword = ({ onBack }) => {
     try {
       const res = await api.post('/forgot-password', { email });
       setSent(true);
-      // In development, show reset link
-      if (res.data.resetLink) {
-        console.log('Reset link:', res.data.resetLink);
-      }
+      // Reset link sent successfully
     } catch (err) {
       setError(err.response?.data?.msg || 'Failed to send reset email');
     } finally {

@@ -1,14 +1,13 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useCallback, memo, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Plus, Calendar } from "lucide-react";
-import { useVirtualizer } from "@tanstack/react-virtual";
 import LogItem from "./LogItem";
 import api from "../utils/api";
 import clsx from "clsx";
 
 const CATEGORIES = ["Coding", "Study", "Health", "Personal"];
 
-const LogModal = ({ isOpen, onClose, date, refreshData, existingData }) => {
+const LogModal = memo(({ isOpen, onClose, date, refreshData, existingData }) => {
   const [formData, setFormData] = useState({
     title: "",
     category: "Coding",
@@ -16,18 +15,9 @@ const LogModal = ({ isOpen, onClose, date, refreshData, existingData }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Virtual scrolling for logs
-  const parentRef = useRef(null);
-  const logs = existingData?.logs || [];
-  
-  const virtualizer = useVirtualizer({
-    count: logs.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => 80,
-    overscan: 5,
-  });
+  const logs = useMemo(() => existingData?.logs || [], [existingData?.logs]);
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
     setError("");
     
@@ -53,24 +43,23 @@ const LogModal = ({ isOpen, onClose, date, refreshData, existingData }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [formData, date, refreshData]);
 
-  const handleDelete = async (logId) => {
+  const handleDelete = useCallback(async (logId) => {
     try {
       await api.delete(`/log/${date}/${logId}`);
       await refreshData();
     } catch (err) {
       const errorMsg = err.response?.data?.msg || "Failed to delete log. Please try again.";
       setError(errorMsg);
-      console.error(err);
     }
-  };
+  }, [date, refreshData]);
 
   if (!isOpen) return null;
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
         {/* Backdrop */}
         <motion.div
           initial={{ opacity: 0 }}
@@ -85,16 +74,16 @@ const LogModal = ({ isOpen, onClose, date, refreshData, existingData }) => {
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
-          className="relative w-full max-w-lg overflow-hidden rounded-3xl bg-[#09090b] border border-white/10 shadow-2xl shadow-violet-500/10"
+          className="relative w-full max-w-lg overflow-hidden rounded-2xl sm:rounded-3xl bg-[#09090b] border border-white/10 shadow-2xl shadow-violet-500/10"
         >
           {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b border-white/5 bg-white/[0.02]">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-primary/10 text-primary">
-                <Calendar size={20} />
+          <div className="flex items-center justify-between p-4 sm:p-6 border-b border-white/5 bg-white/[0.02]">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="p-1.5 sm:p-2 rounded-lg bg-primary/10 text-primary">
+                <Calendar size={18} />
               </div>
               <div>
-                <h2 className="text-xl font-bold text-white tracking-tight">
+                <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight">
                   Daily Log
                 </h2>
                 <p className="text-xs text-zinc-500 font-mono mt-0.5">
@@ -104,13 +93,13 @@ const LogModal = ({ isOpen, onClose, date, refreshData, existingData }) => {
             </div>
             <button
               onClick={onClose}
-              className="p-2 text-zinc-400 hover:text-white hover:bg-white/5 rounded-full transition-colors"
+              className="p-2 text-zinc-400 hover:text-white hover:bg-white/5 rounded-full transition-colors flex-shrink-0"
             >
               <X size={20} />
             </button>
           </div>
 
-          <div className="p-6">
+          <div className="p-4 sm:p-6">
             {/* Error Message */}
             {error && (
               <motion.div
@@ -123,57 +112,51 @@ const LogModal = ({ isOpen, onClose, date, refreshData, existingData }) => {
             )}
             
             {/* Log List */}
-            <div 
-              ref={parentRef}
-              className="mb-8 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar"
-            >
+            <div className="mb-6 sm:mb-8 max-h-[200px] sm:max-h-[280px] overflow-y-auto pr-2 custom-scrollbar space-y-2">
               {logs.length > 0 ? (
-                <div
-                  style={{
-                    height: `${virtualizer.getTotalSize()}px`,
-                    width: '100%',
-                    position: 'relative',
+                <motion.div
+                  initial="hidden"
+                  animate="visible"
+                  variants={{
+                    hidden: { opacity: 0 },
+                    visible: {
+                      opacity: 1,
+                      transition: { staggerChildren: 0.05 }
+                    }
                   }}
+                  className="space-y-2"
                 >
-                  {virtualizer.getVirtualItems().map((virtualItem) => {
-                    const log = logs[virtualItem.index];
-                    return (
-                      <div
-                        key={log._id}
-                        style={{
-                          position: 'absolute',
-                          top: 0,
-                          left: 0,
-                          width: '100%',
-                          transform: `translateY(${virtualItem.start}px)`,
-                        }}
-                      >
-                        <LogItem
-                          log={log}
-                          onDelete={handleDelete}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
+                  {logs.map((log, idx) => (
+                    <LogItem
+                      key={log._id}
+                      log={log}
+                      onDelete={handleDelete}
+                      index={idx}
+                    />
+                  ))}
+                </motion.div>
               ) : (
-                <div className="text-center py-10 border-2 border-dashed border-white/5 rounded-2xl">
+                <motion.div 
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="text-center py-8 sm:py-10 border-2 border-dashed border-white/5 rounded-2xl"
+                >
                   <p className="text-zinc-500 text-sm">
                     No activity recorded yet.
                   </p>
                   <p className="text-zinc-600 text-xs mt-1">
                     Be the 1% who shows up.
                   </p>
-                </div>
+                </motion.div>
               )}
             </div>
 
             {/* Input Form */}
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-3">
+            <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
+              <div className="space-y-2 sm:space-y-3">
                 <input
                   autoFocus
-                  className="w-full bg-transparent border-b border-zinc-800 py-2 text-lg text-white placeholder-zinc-600 focus:border-primary focus:outline-none transition-colors"
+                  className="w-full bg-transparent border-b border-zinc-800 py-2 text-base sm:text-lg text-white placeholder-zinc-600 focus:border-primary focus:outline-none transition-colors"
                   placeholder="What did you achieve today?"
                   value={formData.title}
                   onChange={(e) =>
@@ -208,7 +191,7 @@ const LogModal = ({ isOpen, onClose, date, refreshData, existingData }) => {
               <button
                 disabled={loading}
                 type="submit"
-                className="w-full mt-4 bg-gradient-to-r from-violet-600 to-cyan-600 hover:from-violet-500 hover:to-cyan-500 text-white font-bold py-3 rounded-xl shadow-lg shadow-primary/20 flex items-center justify-center gap-2 transition-all transform active:scale-95"
+                className="w-full mt-3 sm:mt-4 bg-gradient-to-r from-violet-600 to-cyan-600 hover:from-violet-500 hover:to-cyan-500 text-white font-bold py-2.5 sm:py-3 rounded-xl shadow-lg shadow-primary/20 flex items-center justify-center gap-2 transition-all transform active:scale-95 text-sm sm:text-base"
               >
                 {loading ? (
                   <span className="animate-spin">⏳</span>
@@ -223,6 +206,8 @@ const LogModal = ({ isOpen, onClose, date, refreshData, existingData }) => {
       </div>
     </AnimatePresence>
   );
-};
+});
+
+LogModal.displayName = 'LogModal';
 
 export default LogModal;

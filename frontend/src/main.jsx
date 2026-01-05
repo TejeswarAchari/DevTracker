@@ -11,15 +11,14 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
     navigator.serviceWorker
       .register('/service-worker.js')
       .then((registration) => {
-        console.log('Service Worker registered:', registration.scope);
-        
+        // Service worker registered successfully
         // Check for updates periodically
         setInterval(() => {
           registration.update();
         }, 60000); // Check every minute
       })
       .catch((error) => {
-        console.error('Service Worker registration failed:', error);
+        // Service worker registration failed - continue without offline support
       });
   });
 }
